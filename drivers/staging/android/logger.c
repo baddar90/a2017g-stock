@@ -781,6 +781,11 @@ static int __init logger_init(void)
 	if (unlikely(ret))
 		goto out;
 
+    /* zte extend a buffer for crash log from android */
+	ret = create_log(LOGGER_LOG_CRASH, 64 * 1024);
+	if (unlikely(ret))
+		goto out;
+
 out:
 	return ret;
 }
