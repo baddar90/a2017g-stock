@@ -408,6 +408,8 @@
 #define CHG_ITERM_700MA				0x14
 
 #define ADC_TM_WARM_COOL_THR_ENABLE		ADC_TM_HIGH_LOW_THR_ENABLE
+/*zte defined parameters add here*/
+extern int smb1351_is_good;
 
 enum reason {
 	USER	= BIT(0),
@@ -748,7 +750,7 @@ static int smb1351_usb_suspend(struct smb1351_charger *chip, int reason,
 
 	suspended = chip->usb_suspended_status;
 
-	pr_debug("reason = %d requested_suspend = %d suspended_status = %d\n",
+	pr_info("reason = 0x%x requested_suspend = %d suspended_status = 0x%x\n",
 						reason, suspend, suspended);
 
 	if (suspend == false)
@@ -756,7 +758,7 @@ static int smb1351_usb_suspend(struct smb1351_charger *chip, int reason,
 	else
 		suspended |= reason;
 
-	pr_debug("new suspended_status = %d\n", suspended);
+	pr_info("new suspended_status = %d\n", suspended);
 
 	rc = smb1351_masked_write(chip, CMD_INPUT_LIMIT_REG,
 				CMD_SUSPEND_MODE_BIT,
@@ -819,7 +821,7 @@ static int smb1351_get_usb_chg_current(struct smb1351_charger *chip,
 	}
 
 	if (icl_status & STATUS_INPUT_SUSPEND) {
-		pr_debug("USB suspended!\n");
+		pr_info("smb1351 USB suspended!\n");
 		*icl_ma = 0;
 		return rc;
 	}
@@ -853,7 +855,7 @@ static int smb1351_get_usb_chg_current(struct smb1351_charger *chip,
 	default:
 		break;
 	}
-	pr_debug("USB ICL status: %d\n", *icl_ma);
+	pr_info("USB ICL status: %d\n", *icl_ma);
 
 	return rc;
 }
@@ -864,17 +866,17 @@ static int smb1351_set_usb_chg_current(struct smb1351_charger *chip,
 	int i, rc = 0, icl_result_ma = 0;
 	u8 reg = 0, mask = 0;
 
-	pr_debug("USB current_ma = %d\n", current_ma);
+	pr_info("USB current_ma = %d\n", current_ma);
 
 	if (chip->chg_autonomous_mode) {
-		pr_debug("Charger in autonomous mode\n");
+		pr_info("Charger in autonomous mode\n");
 		return 0;
 	}
 
 	/* set suspend bit when urrent_ma <= 2 */
 	if (current_ma <= SUSPEND_CURRENT_MA) {
 		smb1351_usb_suspend(chip, CURRENT, true);
-		pr_debug("USB suspend\n");
+		pr_info("smb1351 USB suspend\n");
 		return 0;
 	}
 
@@ -1744,7 +1746,7 @@ static struct power_supply *smb1351_get_parallel_slave(
 	if (chip->parallel.psy)
 		return chip->parallel.psy;
 
-	chip->parallel.psy = power_supply_get_by_name("usb-parallel");
+	chip->parallel.psy = power_supply_get_by_name("parallel");
 	if (!chip->parallel.psy)
 		pr_debug("parallel slave not found\n");
 
@@ -2404,6 +2406,16 @@ static int smb1351_parallel_set_chg_present(struct smb1351_charger *chip,
 	int rc;
 	u8 reg, mask = 0;
 
+	/* Check if SMB1351 is present */
+	rc = smb1351_read_reg(chip, CHG_REVISION_REG, &reg);
+	if (rc) {
+		smb1351_is_good = 0;
+		pr_info("Failed to detect smb1351-parallel-charger version \n");
+	}
+	else{
+		smb1351_is_good = 1;
+		pr_info("smb1351_is_good=%d ,ZTE get SMB135X version =%d successful.\n",smb1351_is_good,reg);
+	}
 	pr_debug("set slave present = %d\n", present);
 	if (present == chip->parallel_charger_present) {
 		pr_debug("present %d -> %d, skipping\n",
@@ -2555,6 +2567,7 @@ static int smb1351_parallel_set_property(struct power_supply *psy,
 		 *CHG EN is controlled by pin in the parallel charging.
 		 *Use suspend if disable charging by command.
 		 */
+		 pr_info("enable: present=%d, val=%d\n", chip->parallel_charger_present, val->intval);
 		if (chip->parallel_charger_present) {
 			rc = smb1351_usb_suspend(chip, USER, !val->intval);
 			if (rc)
@@ -2564,6 +2577,7 @@ static int smb1351_parallel_set_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 		mutex_lock(&chip->parallel_config_lock);
+		pr_info("present: present=%d, val=%d\n", chip->parallel_charger_present, val->intval);
 		rc = smb1351_parallel_set_chg_present(chip, val->intval);
 		if (rc)
 			pr_err("Set charger %spresent failed\n",
